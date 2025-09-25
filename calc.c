@@ -1,11 +1,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-int main(int argc, char *argv[]){
+int main(){
 
-	int num1 = atoi(argv[1]);
-	char op = argv[2][0];
-	int num2 = atoi(argv[3]);
+	int num1, num2;
+	char op;
+
+	scanf("%d %c %d", &num1, &op, &num2);
 
 	if(op == '+'){
 		printf("result : %d \n", num1 + num2);
@@ -15,9 +16,9 @@ int main(int argc, char *argv[]){
 		printf("result : %d \n", num1 * num2);
 	}else{
 		if (num2 == 0){
-			print("error!");
+			printf("error!");
 		} else{
-			print("result : %d \n", num1/num2);
+			printf("result : %d \n", num1/num2);
 		}
 	}
 	return 0;
