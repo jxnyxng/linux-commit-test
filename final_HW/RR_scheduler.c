@@ -8,11 +8,11 @@
 #include <stdbool.h>
 
 #define NUM_CHILDREN 10
-#define TIME_QUANTUM 3
+#define TIME_QUANTUM 7
 
 #define MAX_IO_WAIT 5
 #define MIN_IO_WAIT 1
-#define MAX_BURST 5
+#define MAX_BURST 2
 #define MIN_BURST 1
 
 #define SIG_RUN_STEP SIGUSR1
@@ -39,7 +39,7 @@ typedef struct{
 
 pcb_t pcb_table[NUM_CHILDREN];
 int current_pid_idx = -1;
-int alive_processes = NUM_CHILDREN;
+volatile int alive_processes = NUM_CHILDREN;
 int system_time = 0;
 int global_quantum_setting = TIME_QUANTUM;
 
@@ -52,7 +52,7 @@ void check_and_reset_quantums(){
 		}
 	}
 	if (all_zero && alive_processes>0){
-		printf("[kernel] all process quantums have been consumed -> reset all quantum \n");
+		//printf("[kernel] all process quantums have been consumed -> reset all quantum \n");
 		for (int i=0; i < NUM_CHILDREN; i++){
 			if(pcb_table[i].status != DONE){
 				pcb_table[i].time_quantum = global_quantum_setting;
@@ -69,9 +69,11 @@ void schedule_next_process();
 // parent timer - RR scheduler
 void parent_timer_handler(int signo){
 	system_time++;
-	printf("\n --- time tick : %d {alive : %d} ---\n", system_time, alive_processes);
+	if(system_time % 10 == 0){
+		printf("\n --- time tick : %d {alive : %d} ---\n", system_time, alive_processes);
+	}
 
-	if(alive_processes == 0) return;
+	if(alive_processes <= 0) return;
 
 	// checking ready queue process
 	for(int i = 0; i < NUM_CHILDREN; i++){
@@ -161,7 +163,7 @@ void child_action_handler(int signo){
 		// cpu == 0 -> process kill or io..
 		my_cpu_burst--;
 		if (my_cpu_burst <= 0){
-			int action = rand()%10;
+			int action = rand()%8;
 			if(action < 8){
 				// process end
 				exit(0);
@@ -215,7 +217,7 @@ void schedule_next_process(){
 		//context switching
 		current_pid_idx = next_idx;
 		pcb_table[current_pid_idx].status = RUNNING;
-		printf("[kernel] switching to child %d (pid : %d\n)", current_pid_idx, pcb_table[current_pid_idx].pid);
+		printf("[kernel] switching to child %d (pid : %d)\n", current_pid_idx, pcb_table[current_pid_idx].pid);
 	}else{
 		//if empty
 		current_pid_idx = -1;
@@ -291,12 +293,13 @@ int main(){
 	
 	// start timer... 0.01 sec
 	printf("[kernel] simulation start.. quantum is %d.. -kjy\n", global_quantum_setting);
-	ualarm(10000, 10000);
+	ualarm(50000, 50000);
 	printf("-------");
 
 	while(alive_processes > 0){
 		pause();
 	}
+
 	print_result();
 
 	return 0;
