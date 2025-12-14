@@ -8,12 +8,12 @@
 #include <stdbool.h>
 
 #define NUM_CHILDREN 10
-#define TIME_QUANTUM 7
+#define TIME_QUANTUM 100
 
 #define MAX_IO_WAIT 5
 #define MIN_IO_WAIT 1
-#define MAX_BURST 2
-#define MIN_BURST 1
+#define MAX_BURST 20
+#define MIN_BURST 5
 
 #define SIG_RUN_STEP SIGUSR1
 #define SIG_REQ_IO SIGUSR2
@@ -35,6 +35,8 @@ typedef struct{
 
 	int waiting_time;
 	int arrival_time;
+	int finish_time;
+	int response_time;
 } pcb_t;
 
 pcb_t pcb_table[NUM_CHILDREN];
@@ -96,15 +98,20 @@ void parent_timer_handler(int signo){
 
 		// running process's time quantum --
 		proc->time_quantum--;
-
+		
 		// send start signal to child
 		kill(proc->pid, SIG_RUN_STEP);
+		
+		//for sync....
+		usleep(5000);
 
 		// time quantum -> 0 -> change to next process
 		if (proc->time_quantum <= 0){
-			printf("[kernel] child %d time quantum expired.\n", proc->pid);
-			proc->status = READY;
-			schedule_next_process();
+			if (proc->status == RUNNING){
+				printf("[kernel] child %d time quantum expired.\n", proc->pid);
+				proc->status = READY;
+				schedule_next_process();
+			}
 		}
 		// if not 0 -> keepgoing
 	}else{
@@ -124,7 +131,7 @@ void parent_io_handler(int signo){
 		//sleep q - changing status
 		proc->status = SLEEP;
 		
-		printf("[kernel] child %d requested IO... wait time: %d. moving to sleep \n", 
+		printf("[kernel] child %d requested IO... wait time: %d. move to sleep \n", 
 				proc->pid, proc->io_wait_remain);
 		
 		//running process went to sleep -> try scheduleing
@@ -141,6 +148,10 @@ void parent_child_handler(int signo){
 		for(int i=0; i<NUM_CHILDREN; i++){
 			if (pcb_table[i].pid == pid){
 				pcb_table[i].status = DONE;
+				
+				// proc dead -> time check
+				pcb_table[i].finish_time = system_time;
+
 				alive_processes--;
 				printf("[kernel] child %d (pid: %d) terminated. \n", i, pid);
 
@@ -163,7 +174,7 @@ void child_action_handler(int signo){
 		// cpu == 0 -> process kill or io..
 		my_cpu_burst--;
 		if (my_cpu_burst <= 0){
-			int action = rand()%8;
+			int action = rand()%10;
 			if(action < 8){
 				// process end
 				exit(0);
@@ -217,6 +228,11 @@ void schedule_next_process(){
 		//context switching
 		current_pid_idx = next_idx;
 		pcb_table[current_pid_idx].status = RUNNING;
+		
+		if (pcb_table[current_pid_idx].response_time == -1){
+			pcb_table[current_pid_idx].response_time = system_time;
+		}
+
 		printf("[kernel] switching to child %d (pid : %d)\n", current_pid_idx, pcb_table[current_pid_idx].pid);
 	}else{
 		//if empty
@@ -228,18 +244,25 @@ void schedule_next_process(){
 //print result
 void print_result(){
 	printf("==================\n");
-	printf("result!! \n");
-	printf("=================");
+	printf("     result!!     \n");
+	printf("=================\n");
 
 	double total_wait = 0;
+	double total_response = 0;
+
 	for (int i=0; i<NUM_CHILDREN; i++){
-		printf("child : %d...%d \n", i, pcb_table[i].waiting_time);
+		printf("child : %d | wait : %d ticks | response : %d ticks \n", i, pcb_table[i].waiting_time, pcb_table[i].response_time);
+	
 		total_wait += pcb_table[i].waiting_time;
+		if(pcb_table[i].response_time != -1){
+			total_response += pcb_table[i].response_time;
+		}	
 	}
-	printf("=====");
-	printf("average waiting time : %.2f tick \n", total_wait / NUM_CHILDREN);
+	printf("=====\n");
+	printf("average waiting time : %.2f ticks \n", total_wait / NUM_CHILDREN);
+	printf("average response time : %.2f ticks \n", total_response / NUM_CHILDREN);
 	printf("quantum setting: %d\n", global_quantum_setting);
-	printf("=====");
+	printf("=====\n");
 }
 
 //main
@@ -285,6 +308,7 @@ int main(){
 			pcb_table[i].arrival_time = 0;
 			pcb_table[i].waiting_time = 0;
 			pcb_table[i].io_wait_remain = 0;
+			pcb_table[i].response_time = -1;
 		}else{
 			perror("fork failed");
 			exit(1);
@@ -293,9 +317,8 @@ int main(){
 	
 	// start timer... 0.01 sec
 	printf("[kernel] simulation start.. quantum is %d.. -kjy\n", global_quantum_setting);
-	ualarm(50000, 50000);
+	ualarm(150000, 150000);
 	printf("-------");
-
 	while(alive_processes > 0){
 		pause();
 	}
